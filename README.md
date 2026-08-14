@@ -18,11 +18,6 @@ Then answer the questions the console asks you.
 the Step API, prompt templates and parsers, and a complete worked example built from scratch. It
 is standalone — you do not need to read this file first.
 
-**Wondering why something is the way it is?** [implementation_decisions.md](implementation_decisions.md)
-records every place the code had to decide something the specifications left open, and which
-design pillar decided it — including the tensions between features, the mechanisms invented to
-satisfy them, and the choices that are simply arbitrary.
-
 ---
 
 ## Running it
