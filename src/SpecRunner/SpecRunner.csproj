@@ -1,0 +1,98 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RootNamespace>SpecRunner</RootNamespace>
+    <AssemblyName>SpecRunner</AssemblyName>
+
+    <!--
+      The configured paths are relative, and `dotnet run` would otherwise resolve them against
+      this project's own directory rather than the repository root. That is the wrong anchor for
+      both of them: 'project' is the operator's data and belongs at the repository root, and
+      'src/SpecRunner/prompts' is expressed from the root so that one anchor serves both.
+
+      This affects `dotnet run` only. The built executable uses whatever working directory it is
+      launched with, which is ordinary CLI behaviour, and an explicit config file overrides both.
+    -->
+    <RunWorkingDirectory>$(MSBuildProjectDirectory)\..\..</RunWorkingDirectory>
+  </PropertyGroup>
+
+  <!--
+    Feature 8.1 - mechanical, build-time enforcement of the two-surface rule (Pillar 2).
+
+    Pillar 2 names exactly two surfaces: the terminal and the browser console. Every
+    diagnostic must go through Emit.To(Surface, ...). This target fails the build if any
+    source file outside the small set of files that *implement* those surfaces reaches for
+    a bypass: System.Console, Debug/Trace writers, or an ambient logging framework.
+
+    Deliberately a plain regex scan rather than a Roslyn analyzer package: it needs no
+    external dependency, it is readable by anyone opening this file, and the thing it is
+    guarding against is textual by nature (Pillar 1).
+  -->
+  <UsingTask TaskName="EnforceTwoSurfaces"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Sources ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <SurfaceImplementationFiles ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var allowed = SurfaceImplementationFiles
+            .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .ToArray();
+
+        var banned = new[] {
+            new[] { @"(?<![\w.])Console\s*\.",            "System.Console access" },
+            new[] { @"(?<![\w.])Debug\s*\.\s*(Write|Print)", "System.Diagnostics.Debug writer" },
+            new[] { @"(?<![\w.])Trace\s*\.\s*(Write|Print)", "System.Diagnostics.Trace writer" },
+            new[] { @"(?<![\w.])ILogger\b",               "ambient logging framework (ILogger)" },
+            new[] { @"(?<![\w.])ILoggerFactory\b",        "ambient logging framework (ILoggerFactory)" },
+            new[] { @"\.AddLogging\s*\(",                 "ambient logging framework (AddLogging)" },
+            new[] { @"\.AddConsole\s*\(",                 "ambient logging framework (AddConsole)" },
+            new[] { @"(?<![\w.])Environment\s*\.\s*FailFast", "diagnostic bypass (FailFast)" }
+        };
+
+        foreach (var item in Sources)
+        {
+            var path = item.GetMetadata("FullPath");
+            var name = Path.GetFileName(path);
+            if (allowed.Contains(name)) continue;
+            if (!File.Exists(path)) continue;
+
+            var lines = File.ReadAllLines(path);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                var code = Regex.Replace(line, @"//.*$", "");
+                foreach (var rule in banned)
+                {
+                    if (Regex.IsMatch(code, rule[0]))
+                    {
+                        Log.LogError(null, "SURFACE001", null, path, i + 1, 1, i + 1, line.Length,
+                            "Two-surface rule (Pillar 2, feature 8.1): " + rule[1] + " is not permitted here. " +
+                            "Route this through Emit.To(Surface.Terminal, ...) or Emit.To(Surface.Console, ...). " +
+                            "Only these files may implement a surface: " + string.Join(", ", allowed));
+                    }
+                }
+            }
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="CheckTwoSurfaceRule" BeforeTargets="CoreCompile">
+    <EnforceTwoSurfaces Sources="@(Compile)"
+                        SurfaceImplementationFiles="TerminalSurface.cs;SurfaceLoggerProvider.cs" />
+  </Target>
+
+</Project>

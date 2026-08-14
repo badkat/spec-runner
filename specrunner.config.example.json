@@ -1,0 +1,13 @@
+{
+  // Copy to specrunner.config.json and pass with --config, or leave it out entirely and the
+  // built-in defaults below apply. Relative paths resolve against this file's own directory.
+  //
+  // Every value here is echoed to the terminal at startup with its source (feature 8.10).
+  // The API key is elided from that echo; prefer the SPECRUNNER_API_KEY environment variable
+  // so this file can be checked in.
+
+  "projectDirectory": "project",
+  "promptsDirectory": "src/SpecRunner/prompts",
+  "baseUrl": "https://api.openai.com/v1",
+  "port": 5099
+}
